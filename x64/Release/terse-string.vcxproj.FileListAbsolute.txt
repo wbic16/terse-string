@@ -1,0 +1,1 @@
+C:\Source\terse-string\x64\Release\terse-string.exe
