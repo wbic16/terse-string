@@ -4,3 +4,4 @@ obj/
 bin/
 *.vcxproj.filters
 x64/Debug/*
+*.*log

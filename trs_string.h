@@ -176,13 +176,18 @@ namespace trs
       string(const char* filename)
       {
          std::ifstream file;
-         file.open(filename);
+         file.open(filename, std::ifstream::binary);
          file.seekg(0, std::ios::end);
          size_t length = file.tellg();
          file.seekg(0, std::ios::beg);
          std::vector<uint8_t> data;
          data.resize(length);
          file.read(reinterpret_cast<char*>(data.data()), length);
+         if (!file)
+         {
+            std::cerr << "Error: expected " << length << " bytes, but read only " << file.gcount() << " bytes.\n";
+            throw std::runtime_error("Failed disk read");
+         }
          file.close();
 
          loadTerse(data);
@@ -192,6 +197,204 @@ namespace trs
          : m_current(), m_buffer(), m_terse()
       {
          loadTerse(data);
+      }
+
+      size_t size() const noexcept
+      {
+         size_t total = 0;
+         bool atLeastOneLibrary = false;
+         for (const auto& [libraryID, libPtr] : m_terse.map)
+         {
+            if (atLeastOneLibrary) { ++total; }
+            atLeastOneLibrary = true;
+            bool atLeastOneShelf = false;
+            for (const auto& [shelfID, shelfPtr] : libPtr->map)
+            {
+               if (atLeastOneShelf) { ++total; }
+               atLeastOneShelf = true;
+               bool atLeastOneSeries = false;
+               for (const auto& [seriesID, seriesPtr] : shelfPtr->map)
+               {
+                  if (atLeastOneSeries) { ++total; }
+                  atLeastOneSeries = true;
+                  bool atLeastOneCollection = false;
+                  for (const auto& [collectionID, collectionPtr] : seriesPtr->map)
+                  {
+                     if (atLeastOneCollection) { ++total; }
+                     atLeastOneCollection = true;
+                     bool atLeastOneVolume = false;
+                     for (const auto& [volumeID, volumePtr] : collectionPtr->map)
+                     {
+                        if (atLeastOneVolume) { ++total; }
+                        atLeastOneVolume = true;
+                        bool atLeastOneBook = false;
+                        for (const auto& [bookID, bookPtr] : volumePtr->map)
+                        {
+                           if (atLeastOneBook) { ++total; }
+                           atLeastOneBook = true;
+                           bool atLeastOneChapter = false;
+                           for (const auto& [chapterID, chapterPtr] : bookPtr->map)
+                           {
+                              if (atLeastOneChapter) { ++total; }
+                              atLeastOneChapter = true;
+                              bool atLeastOneSection = false;
+                              for (const auto& [sectionID, sectionPtr] : chapterPtr->map)
+                              {
+                                 if (atLeastOneSection) { ++total; }
+                                 atLeastOneSection = true;
+                                 bool atLeastOneScroll = false;
+                                 for (const auto& [scrollID, scrollPtr] : sectionPtr->map)
+                                 {
+                                    if (atLeastOneScroll) { ++total; }
+                                    atLeastOneScroll = true;
+                                    total += scrollPtr->size();
+                                 }
+                              }
+                           }
+                        }
+                     }
+                  }
+               }
+            }
+         }
+         return total;
+      }
+
+      void expand() noexcept
+      {
+         std::vector<uint8_t> expanded;
+         expanded.reserve(size());
+         bool atLeastOneLibrary = false;
+         for (const auto& [libraryID, libPtr] : m_terse.map)
+         {
+            if (atLeastOneLibrary) { expanded.push_back(LIBRARY_BREAK); }
+            atLeastOneLibrary = true;
+            bool atLeastOneShelf = false;
+            for (const auto& [shelfID, shelfPtr] : libPtr->map)
+            {
+               if (atLeastOneShelf) { expanded.push_back(LIBRARY_BREAK); }
+               atLeastOneShelf = true;
+               bool atLeastOneSeries = false;
+               for (const auto& [seriesID, seriesPtr] : shelfPtr->map)
+               {
+                  if (atLeastOneSeries) { expanded.push_back(SHELF_BREAK); }
+                  atLeastOneSeries = true;
+                  bool atLeastOneCollection = false;
+                  for (const auto& [collectionID, collectionPtr] : seriesPtr->map)
+                  {
+                     if (atLeastOneCollection) { expanded.push_back(SERIES_BREAK); }
+                     atLeastOneCollection = true;
+                     bool atLeastOneVolume = false;
+                     for (const auto& [volumeID, volumePtr] : collectionPtr->map)
+                     {
+                        if (atLeastOneVolume) { expanded.push_back(COLLECTION_BREAK); }
+                        atLeastOneVolume = true;
+                        bool atLeastOneBook = false;
+                        for (const auto& [bookID, bookPtr] : volumePtr->map)
+                        {
+                           if (atLeastOneBook) { expanded.push_back(VOLUME_BREAK); }
+                           atLeastOneBook = true;
+                           bool atLeastOneChapter = false;
+                           for (const auto& [chapterID, chapterPtr] : bookPtr->map)
+                           {
+                              if (atLeastOneChapter) { expanded.push_back(BOOK_BREAK); }
+                              atLeastOneChapter = true;
+                              bool atLeastOneSection = false;
+                              for (const auto& [sectionID, sectionPtr] : chapterPtr->map)
+                              {
+                                 if (atLeastOneSection) { expanded.push_back(CHAPTER_BREAK); }
+                                 atLeastOneSection = true;
+                                 bool atLeastOneScroll = false;
+                                 for (const auto& [scrollID, scrollPtr] : sectionPtr->map)
+                                 {
+                                    if (atLeastOneScroll) { expanded.push_back(SECTION_BREAK); }
+                                    atLeastOneScroll = true;
+                                    for (char c : *scrollPtr)
+                                    {
+                                       if (c == '\n')
+                                       {
+                                          expanded.push_back(SCROLL_BREAK);
+                                       }
+                                       else
+                                       {
+                                          expanded.push_back(c);
+                                       }
+                                    }
+                                 }
+                              }
+                           }
+                        }
+                     }
+                  }
+               }
+            }
+         }
+         loadTerse(expanded);
+      }
+
+      void contract() noexcept
+      {
+         std::vector<uint8_t> contracted;
+         contracted.reserve(size());
+         bool atLeastOneLibrary = false;
+         for (const auto& [libraryID, libPtr] : m_terse.map)
+         {
+            if (atLeastOneLibrary) { contracted.push_back(SHELF_BREAK); }
+            atLeastOneLibrary = true;
+            bool atLeastOneShelf = false;
+            for (const auto& [shelfID, shelfPtr] : libPtr->map)
+            {
+               if (atLeastOneShelf) { contracted.push_back(SERIES_BREAK); }
+               atLeastOneShelf = true;
+               bool atLeastOneSeries = false;
+               for (const auto& [seriesID, seriesPtr] : shelfPtr->map)
+               {
+                  if (atLeastOneSeries) { contracted.push_back(COLLECTION_BREAK); }
+                  atLeastOneSeries = true;
+                  bool atLeastOneCollection = false;
+                  for (const auto& [collectionID, collectionPtr] : seriesPtr->map)
+                  {
+                     if (atLeastOneCollection) { contracted.push_back(VOLUME_BREAK); }
+                     atLeastOneCollection = true;
+                     bool atLeastOneVolume = false;
+                     for (const auto& [volumeID, volumePtr] : collectionPtr->map)
+                     {
+                        if (atLeastOneVolume) { contracted.push_back(BOOK_BREAK); }
+                        atLeastOneVolume = true;
+                        bool atLeastOneBook = false;
+                        for (const auto& [bookID, bookPtr] : volumePtr->map)
+                        {
+                           if (atLeastOneBook) { contracted.push_back(CHAPTER_BREAK); }
+                           atLeastOneBook = true;
+                           bool atLeastOneChapter = false;
+                           for (const auto& [chapterID, chapterPtr] : bookPtr->map)
+                           {
+                              if (atLeastOneChapter) { contracted.push_back(SECTION_BREAK); }
+                              atLeastOneChapter = true;
+                              bool atLeastOneSection = false;
+                              for (const auto& [sectionID, sectionPtr] : chapterPtr->map)
+                              {
+                                 if (atLeastOneSection) { contracted.push_back(SCROLL_BREAK); }
+                                 atLeastOneSection = true;
+                                 bool atLeastOneScroll = false;
+                                 for (const auto& [scrollID, scrollPtr] : sectionPtr->map)
+                                 {
+                                    if (atLeastOneScroll) { contracted.push_back('\n'); }
+                                    atLeastOneScroll = true;
+                                    for (char c : *scrollPtr)
+                                    {
+                                       contracted.push_back(c);
+                                    }
+                                 }
+                              }
+                           }
+                        }
+                     }
+                  }
+               }
+            }
+         }
+         loadTerse(contracted);
       }
 
       std::string getNavTree() const
@@ -262,60 +465,62 @@ namespace trs
 
       void loadTerse(const std::vector<uint8_t>& data)
       {
+         m_terse = {};
+         m_buffer.clear();
          m_current.start = 0;
          for (const uint8_t ith : data)
          {
             switch (ith)
             {
-               case Break::LIBRARY:
+               case LIBRARY_BREAK:
                   setTerseText();
                   m_coords.libraryBreak();
                   m_buffer.clear();
                   m_current.end = 0;
                   break;
-               case Break::SHELF:
+               case SHELF_BREAK:
                   setTerseText();
                   m_coords.shelfBreak();
                   m_buffer.clear();
                   m_current.end = 0;
                   break;
-               case Break::SERIES:
+               case SERIES_BREAK:
                   setTerseText();
                   m_coords.seriesBreak();
                   m_buffer.clear();
                   m_current.end = 0;
                   break;
-               case Break::COLLECTION:
+               case COLLECTION_BREAK:
                   setTerseText();
                   m_coords.collectionBreak();
                   m_buffer.clear();
                   m_current.end = 0;
                   break;
-               case Break::VOLUME:
+               case VOLUME_BREAK:
                   setTerseText();
                   m_coords.volumeBreak();
                   m_buffer.clear();
                   m_current.end = 0;
                   break;
-               case Break::BOOK:
+               case BOOK_BREAK:
                   setTerseText();
                   m_coords.bookBreak();
                   m_buffer.clear();
                   m_current.end = 0;
                   break;
-               case Break::CHAPTER:
+               case CHAPTER_BREAK:
                   setTerseText();
                   m_coords.chapterBreak();
                   m_buffer.clear();
                   m_current.end = 0;
                   break;
-               case Break::SECTION:
+               case SECTION_BREAK:
                   setTerseText();
                   m_coords.sectionBreak();
                   m_buffer.clear();
                   m_current.end = 0;
                   break;
-               case Break::SCROLL:
+               case SCROLL_BREAK:
                   setTerseText();
                   m_coords.scrollBreak();
                   m_buffer.clear();
